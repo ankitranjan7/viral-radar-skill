@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+.env
+.viral-radar/
+state.sqlite3*
+output/
+logs/
