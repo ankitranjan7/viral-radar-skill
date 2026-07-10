@@ -4,14 +4,10 @@ Viral Radar is an agent skill that installs a local cron job which scans your
 authenticated X For You timeline with Webcmd and sends new viral-post alerts
 to Discord, Slack, or a generic webhook.
 
-Install the skill from this checkout:
+Install the skill:
 
 ```bash
-# Codex
-skill_dir="${CODEX_HOME:-$HOME/.codex}/skills"; mkdir -p "$skill_dir"; rm -rf "$skill_dir/viral-radar"; cp -R viral-radar "$skill_dir/"
-
-# Claude Code
-skill_dir="$HOME/.claude/skills"; mkdir -p "$skill_dir"; rm -rf "$skill_dir/viral-radar"; cp -R viral-radar "$skill_dir/"
+npx skills add ankitranjan7/viral-radar-skill -g
 ```
 
 Then start setup in your agent:
