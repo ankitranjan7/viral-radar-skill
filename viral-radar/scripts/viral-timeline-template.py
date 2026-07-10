@@ -120,6 +120,14 @@ def run_webcmd_json(
     if window:
         command += ["--window", window]
     command += ["-f", "json"]
+    result = run_webcmd_command(command, timeout)
+    try:
+        return json.loads(result.stdout or "[]")
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("webcmd returned invalid JSON") from exc
+
+
+def run_webcmd_command(command: list[str], timeout: int) -> subprocess.CompletedProcess[str]:
     try:
         result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
     except FileNotFoundError as exc:
@@ -128,11 +136,20 @@ def run_webcmd_json(
         raise RuntimeError(f"webcmd timed out after {timeout}s") from exc
     if result.returncode != 0:
         detail = (result.stderr or result.stdout or f"exit {result.returncode}").strip()
+        if "Target page, context or browser has been closed" in detail:
+            subprocess.run(
+                [command[0], "daemon", "restart"],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                check=False,
+            )
+            result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
+            if result.returncode == 0:
+                return result
+            detail = (result.stderr or result.stdout or f"exit {result.returncode}").strip()
         raise RuntimeError(f"webcmd failed: {detail[:500]}")
-    try:
-        return json.loads(result.stdout or "[]")
-    except json.JSONDecodeError as exc:
-        raise RuntimeError("webcmd returned invalid JSON") from exc
+    return result
 
 
 def fetch_tweets(webcmd: str, limit: int, window: str = DEFAULT_WEBCMD_WINDOW) -> list[dict[str, object]]:

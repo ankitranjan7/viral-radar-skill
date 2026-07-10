@@ -27,6 +27,10 @@ they do not invoke Codex, an LLM, or an agent.
 5. Run `webcmd twitter whoami --window background -f json`.
    - If it fails, guide `webcmd twitter login` in a visible browser, then rerun
      `whoami --window background`.
+   - Explain that `background` prevents focus stealing, but browser-backed X
+     commands still need the Cloak/Webcmd browser runtime installed and logged
+     in. The scheduled script retries once after restarting the Webcmd daemon if
+     it sees a stale closed browser context.
 6. Ask how often to scan. Use `0 * * * *` if the user wants the default hourly schedule.
 7. Offer the default detector values and only ask for changes if the user wants them:
    - limit `80`

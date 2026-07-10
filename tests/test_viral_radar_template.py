@@ -150,6 +150,34 @@ class ViralRadarTemplateTests(unittest.TestCase):
             self.assertIn("--window", argv)
             self.assertEqual(argv[argv.index("--window") + 1], "background")
 
+    def test_webcmd_restarts_daemon_once_after_stale_browser_context(self) -> None:
+        module = load_template()
+        run_webcmd_json = module["run_webcmd_json"]
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            calls_path = root / "calls.jsonl"
+            webcmd = root / "webcmd"
+            webcmd.write_text(
+                "#!/usr/bin/env python3\n"
+                "import json, pathlib, sys\n"
+                f"calls = pathlib.Path({str(calls_path)!r})\n"
+                "calls.write_text(calls.read_text() + json.dumps(sys.argv[1:]) + '\\n' if calls.exists() else json.dumps(sys.argv[1:]) + '\\n')\n"
+                "if sys.argv[1:3] == ['daemon', 'restart']:\n"
+                "    sys.exit(0)\n"
+                "if calls.read_text().count('\\n') == 1:\n"
+                "    sys.stderr.write('browserContext.newPage: Target page, context or browser has been closed')\n"
+                "    sys.exit(1)\n"
+                "sys.stdout.write('[]')\n",
+                encoding="utf-8",
+            )
+            webcmd.chmod(0o700)
+
+            self.assertEqual(run_webcmd_json(str(webcmd), ["twitter", "whoami"]), [])
+
+            calls = [json.loads(line) for line in calls_path.read_text().splitlines()]
+            self.assertEqual(calls[1], ["daemon", "restart"])
+            self.assertEqual(calls[2][:2], ["twitter", "whoami"])
+
     def test_main_delivers_once_and_writes_secret_free_evidence(self) -> None:
         module = load_template()
         main = module["main"]
