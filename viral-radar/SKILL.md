@@ -1,65 +1,140 @@
 ---
 name: viral-radar
-description: Install, verify, update, or remove a local cron automation that scans the user's authenticated X For You timeline with Webcmd, detects viral posts, deduplicates deliveries in SQLite, and sends alerts to Discord, Slack, or a generic webhook. Use when the user asks to set up viral X/Twitter post alerts, scheduled viral radar, webhook alerts from their For You timeline, or to troubleshoot/remove this automation.
+description: Set up, check, tune, troubleshoot, or remove Viral Radar - a local cron automation that scans the user's authenticated X (Twitter) For You timeline with Webcmd, scores posts for viral velocity, deduplicates deliveries in SQLite, and sends alerts to a Discord, Slack, or generic webhook. Use whenever the user wants alerts or notifications about viral or trending posts from their X/Twitter timeline, scheduled or recurring scanning of their feed, or mentions viral-radar at all - including asking whether it is running, changing its schedule or thresholds, debugging missing or duplicate alerts, or uninstalling it. Also use for requests like "ping me when something blows up on my timeline" that do not name the skill explicitly.
 ---
 
 # Viral Radar
 
-Install a user-owned cron job. Scheduled runs execute local Python code only:
-they do not invoke Codex, an LLM, or an agent.
+Viral Radar installs a user-owned cron job on this machine. Everything under
+`~/.viral-radar/` belongs to the user, and the scheduled runs execute plain
+local Python only — they never invoke an LLM, an agent, or this skill. Your job
+is to set that automation up correctly (or inspect, tune, and remove it), then
+get out of the way.
 
-## Workflow
+Files the automation uses:
 
-1. Explain that setup creates:
-   - `~/.viral-radar/viral-timeline.py`
-   - `~/.viral-radar/config.env`
-   - `~/.viral-radar/state.sqlite3`
-   - `~/.viral-radar/output/`
-   - `~/.viral-radar/logs/`
-2. Check prerequisites:
-   - `node --version` must be 20 or newer.
-   - `webcmd --version` must work.
-   - If Webcmd is absent, ask before running `npm install -g @agentrhq/webcmd`.
-3. Refresh bundled Webcmd skills:
-   - Run `webcmd skills install --provider codex --scope user`.
-   - Load `webcmd-usage` before using live Webcmd commands.
-4. Run `webcmd doctor`.
-5. Run `webcmd twitter whoami --window background -f json`.
-   - If it fails, guide `webcmd twitter login` in a visible browser, then rerun
-     `whoami --window background`.
-   - Explain that `background` prevents focus stealing, but browser-backed X
-     commands still need the Cloak/Webcmd browser runtime installed and logged
-     in. The scheduled script retries once after restarting the Webcmd daemon if
-     it sees a stale closed browser context.
-6. Ask how often to scan. Use `0 * * * *` if the user wants the default hourly schedule.
-7. Offer the default detector values and only ask for changes if the user wants them:
-   - limit `80`
-   - cutoff `6` hours
-   - fresh window `2` hours
-   - threshold `100`
-   - view exponent `0.25`
-8. Create `~/.viral-radar/` with `output/` and `logs/`.
-9. Copy `scripts/viral-timeline-template.py` to `~/.viral-radar/viral-timeline.py` and make it executable.
-10. Ask the webhook question last: Discord, Slack, generic webhook, or help creating one.
-    - If help is needed, read `references/notifications.md`.
-11. Write `~/.viral-radar/config.env` with mode `0600`.
-    - Store exactly one webhook URL.
-    - Never print, log, or write webhook URLs to evidence files.
-12. Send a safe webhook test alert:
-    - Use the same absolute Python path, config, state, output directory, stdout
-      redirection, and stderr redirection planned for cron.
-    - Add `--test-alert`.
-    - Continue only if this exits `0`.
-    - Confirm `state.sqlite3` exists and an evidence JSON file was written.
-13. Run the generated script once exactly as cron will run it:
-    - absolute Python path
-    - absolute Webcmd path in `VIRAL_RADAR_WEBCMD`
-    - `VIRAL_RADAR_WEBCMD_WINDOW=background`
-    - `--config`, `--state`, and `--output-dir`
-    - stdout redirected to `logs/viral-radar.log`
-    - stderr redirected to `logs/viral-radar.err`
-14. Continue only if the normal smoke test exits `0`.
-15. Install or replace this managed cron block, preserving unrelated crontab entries:
+| Path | Purpose |
+|------|---------|
+| `~/.viral-radar/viral-timeline.py` | The scan script (copied from `scripts/viral-timeline-template.py`) |
+| `~/.viral-radar/config.env` | Settings + webhook URL (mode `0600`) |
+| `~/.viral-radar/state.sqlite3` | Delivery log used for deduplication |
+| `~/.viral-radar/output/` | One JSON evidence file per run |
+| `~/.viral-radar/logs/` | `viral-radar.log` (stdout) and `viral-radar.err` (stderr) |
+
+Route by what the user needs:
+
+- **Set it up** → [Install](#install)
+- **"Is it working?"** → [Verify](#verify)
+- **Change schedule, thresholds, or destination** → [Update](#update)
+- **Errors, missed alerts, duplicates, cron not firing** → read `references/troubleshooting.md`
+- **Uninstall** → [Removal](#removal)
+
+## How detection works
+
+Understanding the detector lets you explain alerts and tune thresholds with
+the user instead of treating the numbers as magic.
+
+Each run fetches up to `VIRAL_RADAR_LIMIT` posts from the For You timeline and
+keeps those newer than `VIRAL_RADAR_CUTOFF_HOURS`. Each post gets an
+engagement score weighted toward signals that indicate genuine conversation:
+
+```
+engagement = likes + 3*retweets + 9*replies + 7*quotes + 5*bookmarks
+normalized_score = engagement / views ^ VIRAL_RADAR_VIEW_EXPONENT
+```
+
+Dividing by `views^exponent` rewards posts whose engagement is high *relative
+to reach* — a fast-moving post from a small account outranks a celebrity post
+with passive views. A post alerts when its normalized score exceeds
+`VIRAL_RADAR_THRESHOLD`. Posts younger than `VIRAL_RADAR_FRESH_HOURS` are all
+eligible; if none qualify, only the single newest older qualifier is sent, so
+a backlog never floods the webhook.
+
+A boost filter drops likely-astroturfed posts: suspicious amplification shape
+(retweets+quotes far outpacing replies, or quotes outpacing retweets) from an
+author under 20k followers.
+
+Deduplication is by tweet ID in `state.sqlite3` — a post alerts once, ever,
+until rows older than `VIRAL_RADAR_RETENTION_DAYS` are pruned.
+
+## Install
+
+### 1. Confirm the plan
+
+Tell the user what setup creates (the file table above), that it requires a
+Webcmd browser session logged into X, and how often it will run. Get their
+go-ahead before touching their machine.
+
+### 2. Check prerequisites
+
+The scan script shells out to Webcmd, which needs Node:
+
+- `node --version` — must be 20 or newer.
+- `webcmd --version` — must succeed. If Webcmd is missing, ask before running
+  `npm install -g @agentrhq/webcmd` (it is a global install on their machine).
+- If your harness supports Webcmd's bundled skills (e.g. on Codex:
+  `webcmd skills install --provider codex`), refresh them and load
+  `webcmd-usage` before issuing live Webcmd commands. Otherwise rely on
+  `webcmd --help`.
+
+### 3. Verify X authentication
+
+Run `webcmd doctor`, then `webcmd twitter whoami --window background -f json`.
+
+If `whoami` fails, walk the user through `webcmd twitter login` in a visible
+browser window, then rerun `whoami --window background`. Use `background` for
+everything scripted — it prevents the browser from stealing focus during
+scheduled runs — but note that browser-backed X commands still require the
+Webcmd/Cloak browser runtime to be installed and logged in. The scan script
+already handles one stale-browser-context failure per run by restarting the
+Webcmd daemon and retrying.
+
+### 4. Gather settings
+
+- **Schedule**: ask how often to scan; default is hourly (`0 * * * *`).
+  Mention that the machine must be awake for cron to fire.
+- **Detector values**: offer the defaults (see [Config keys](#config-keys))
+  and only discuss individual knobs if the user wants changes.
+- **Webhook destination** (ask last, since it may require the user to leave
+  and create one): Discord, Slack, or generic webhook. If they need help
+  creating one, read `references/notifications.md`.
+
+### 5. Create the runtime files
+
+1. Create `~/.viral-radar/` with `output/` and `logs/`.
+2. Copy `scripts/viral-timeline-template.py` to
+   `~/.viral-radar/viral-timeline.py` and make it executable.
+3. Write `~/.viral-radar/config.env` with mode `0600`, containing the keys
+   from [Config keys](#config-keys) and exactly one webhook URL (the one
+   matching `VIRAL_RADAR_DESTINATION`).
+
+The webhook URL is a credential: anyone holding it can post to the user's
+channel. Never print it, log it, or let it end up in evidence files, shell
+history you echo back, or chat output. If it leaks, tell the user to rotate it.
+
+### 6. Test exactly as cron will run
+
+Cron runs with a minimal environment — no shell profile, near-empty `PATH`,
+different working directory. Most "worked when I set it up, silent ever since"
+failures come from testing under interactive conditions. So both test runs
+must use:
+
+- an absolute Python path
+- an absolute Webcmd path in `VIRAL_RADAR_WEBCMD` (from `which webcmd`)
+- `VIRAL_RADAR_WEBCMD_WINDOW=background`
+- explicit `--config`, `--state`, and `--output-dir`
+- stdout appended to `logs/viral-radar.log`, stderr to `logs/viral-radar.err`
+
+First run with `--test-alert` added: it sends a harmless "Viral Radar test
+alert" to the webhook. Continue only if it exits `0`, `state.sqlite3` exists,
+and an evidence JSON appeared in `output/`. Then run once without
+`--test-alert` for a full live scan and require exit `0` again.
+
+### 7. Install the cron entry
+
+Install or replace this managed block, preserving all unrelated crontab
+entries (the markers exist so update and removal can never clobber the user's
+other jobs):
 
 ```cron
 # viral-radar begin
@@ -67,18 +142,39 @@ they do not invoke Codex, an LLM, or an agent.
 # viral-radar end
 ```
 
-16. Verify with `crontab -l`.
-17. Report:
-    - schedule
-    - runtime directory
-    - config path
-    - logs path
-    - evidence path
-    - removal procedure
+Verify with `crontab -l`, then report to the user: the schedule, the runtime
+directory, where config/logs/evidence live, and how removal works.
 
-## Config Keys
+## Verify
 
-Write these keys in `config.env`:
+When the user asks whether Viral Radar is working:
+
+1. `crontab -l` — confirm the managed block exists and read its schedule.
+2. Check the newest file in `~/.viral-radar/output/` — its timestamped name
+   tells you when the last successful run finished, and its `selected` /
+   `delivered` fields tell you what it found.
+3. Tail `~/.viral-radar/logs/viral-radar.err` for recent failures.
+4. If freshness or errors look wrong, or the user reports missed/duplicate
+   alerts, continue in `references/troubleshooting.md`.
+
+An empty `selected` array is not a failure — it means nothing on the timeline
+crossed the threshold that run.
+
+## Update
+
+- **Detector values or destination**: edit `~/.viral-radar/config.env` (keep
+  mode `0600`). The script rereads it every run, so no cron change is needed.
+  After changing the destination or webhook, rerun the `--test-alert` command
+  from Install step 6.
+- **Schedule**: rewrite only the managed cron block with the new schedule,
+  preserving everything outside the markers. Verify with `crontab -l`.
+- **Script**: if this skill ships a newer template, re-copy it over
+  `~/.viral-radar/viral-timeline.py` and rerun both Install step 6 tests.
+
+## Config keys
+
+Write these keys in `config.env`. Only the webhook key matching
+`VIRAL_RADAR_DESTINATION` should have a value.
 
 ```dotenv
 VIRAL_RADAR_DESTINATION=discord
@@ -95,9 +191,20 @@ VIRAL_RADAR_VIEW_EXPONENT=0.25
 VIRAL_RADAR_RETENTION_DAYS=30
 ```
 
-Use only the webhook key matching `VIRAL_RADAR_DESTINATION`.
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `LIMIT` | 80 | Timeline posts fetched per scan |
+| `CUTOFF_HOURS` | 6 | Ignore posts older than this |
+| `FRESH_HOURS` | 2 | Posts younger than this all compete; older qualifiers send one at most |
+| `THRESHOLD` | 100 | Minimum normalized score to alert — raise for fewer alerts, lower for more |
+| `VIEW_EXPONENT` | 0.25 | View normalization strength — higher favors low-view fast movers |
+| `RETENTION_DAYS` | 30 | Prune dedup rows and evidence files after this many days |
 
 ## Removal
 
-To uninstall, remove only the managed crontab block between `# viral-radar begin`
-and `# viral-radar end`. Ask before deleting `~/.viral-radar/`.
+1. Remove only the managed crontab block between `# viral-radar begin` and
+   `# viral-radar end`, leaving every other entry intact. Verify with
+   `crontab -l`.
+2. Ask before deleting `~/.viral-radar/` — it holds the user's delivery
+   history and their webhook URL. If they keep the directory, remind them
+   `config.env` still contains the webhook credential.
