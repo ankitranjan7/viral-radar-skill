@@ -1,0 +1,4 @@
+interface:
+  display_name: "Viral Radar"
+  short_description: "Monitor your X timeline for viral posts"
+  default_prompt: "Use $viral-radar to set up hourly viral-post alerts from my X timeline."
