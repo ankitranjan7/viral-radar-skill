@@ -24,8 +24,9 @@ they do not invoke Codex, an LLM, or an agent.
    - Run `webcmd skills install --provider codex --scope user`.
    - Load `webcmd-usage` before using live Webcmd commands.
 4. Run `webcmd doctor`.
-5. Run `webcmd twitter whoami -f json`.
-   - If it fails, guide `webcmd twitter login`, then rerun `whoami`.
+5. Run `webcmd twitter whoami --window background -f json`.
+   - If it fails, guide `webcmd twitter login` in a visible browser, then rerun
+     `whoami --window background`.
 6. Ask how often to scan. Use `0 * * * *` if the user wants the default hourly schedule.
 7. Offer the default detector values and only ask for changes if the user wants them:
    - limit `80`
@@ -49,6 +50,7 @@ they do not invoke Codex, an LLM, or an agent.
 13. Run the generated script once exactly as cron will run it:
     - absolute Python path
     - absolute Webcmd path in `VIRAL_RADAR_WEBCMD`
+    - `VIRAL_RADAR_WEBCMD_WINDOW=background`
     - `--config`, `--state`, and `--output-dir`
     - stdout redirected to `logs/viral-radar.log`
     - stderr redirected to `logs/viral-radar.err`
@@ -80,6 +82,7 @@ VIRAL_RADAR_DISCORD_WEBHOOK=...
 VIRAL_RADAR_SLACK_WEBHOOK=
 VIRAL_RADAR_GENERIC_WEBHOOK=
 VIRAL_RADAR_WEBCMD=/absolute/path/to/webcmd
+VIRAL_RADAR_WEBCMD_WINDOW=background
 VIRAL_RADAR_LIMIT=80
 VIRAL_RADAR_CUTOFF_HOURS=6
 VIRAL_RADAR_FRESH_HOURS=2

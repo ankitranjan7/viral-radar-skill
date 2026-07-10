@@ -128,6 +128,28 @@ class ViralRadarTemplateTests(unittest.TestCase):
         self.assertIn("*/15 * * * * /usr/bin/python3 /tmp/viral.py", updated)
         self.assertNotIn("\nold\n", updated)
 
+    def test_webcmd_calls_default_to_background_window_mode(self) -> None:
+        module = load_template()
+        run_webcmd_json = module["run_webcmd_json"]
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            argv_path = root / "argv.json"
+            webcmd = root / "webcmd"
+            webcmd.write_text(
+                "#!/usr/bin/env python3\n"
+                "import json, pathlib, sys\n"
+                f"pathlib.Path({str(argv_path)!r}).write_text(json.dumps(sys.argv[1:]))\n"
+                "sys.stdout.write('[]')\n",
+                encoding="utf-8",
+            )
+            webcmd.chmod(0o700)
+
+            run_webcmd_json(str(webcmd), ["twitter", "whoami"])
+
+            argv = json.loads(argv_path.read_text(encoding="utf-8"))
+            self.assertIn("--window", argv)
+            self.assertEqual(argv[argv.index("--window") + 1], "background")
+
     def test_main_delivers_once_and_writes_secret_free_evidence(self) -> None:
         module = load_template()
         main = module["main"]

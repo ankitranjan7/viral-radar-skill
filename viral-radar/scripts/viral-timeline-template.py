@@ -23,6 +23,7 @@ DEFAULT_CUTOFF_HOURS = 6.0
 DEFAULT_FRESH_HOURS = 2.0
 DEFAULT_THRESHOLD = 100.0
 DEFAULT_EXPONENT = 0.25
+DEFAULT_WEBCMD_WINDOW = "background"
 RETENTION_DAYS = 30
 BEGIN_MARKER = "# viral-radar begin"
 END_MARKER = "# viral-radar end"
@@ -109,8 +110,16 @@ def metrics_from_row(row: dict[str, object]) -> dict[str, int]:
     }
 
 
-def run_webcmd_json(webcmd: str, args: list[str], timeout: int = 180) -> object:
-    command = shlex.split(webcmd) + args + ["-f", "json"]
+def run_webcmd_json(
+    webcmd: str,
+    args: list[str],
+    timeout: int = 180,
+    window: str = DEFAULT_WEBCMD_WINDOW,
+) -> object:
+    command = shlex.split(webcmd) + args
+    if window:
+        command += ["--window", window]
+    command += ["-f", "json"]
     try:
         result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
     except FileNotFoundError as exc:
@@ -126,9 +135,11 @@ def run_webcmd_json(webcmd: str, args: list[str], timeout: int = 180) -> object:
         raise RuntimeError("webcmd returned invalid JSON") from exc
 
 
-def fetch_tweets(webcmd: str, limit: int) -> list[dict[str, object]]:
+def fetch_tweets(webcmd: str, limit: int, window: str = DEFAULT_WEBCMD_WINDOW) -> list[dict[str, object]]:
     payload = run_webcmd_json(
-        webcmd, ["twitter", "timeline", "--type", "for-you", "--limit", str(limit)]
+        webcmd,
+        ["twitter", "timeline", "--type", "for-you", "--limit", str(limit)],
+        window=window,
     )
     if isinstance(payload, dict) and "data" in payload:
         payload = payload.get("data") or []
@@ -137,11 +148,13 @@ def fetch_tweets(webcmd: str, limit: int) -> list[dict[str, object]]:
     return [row for row in payload if isinstance(row, dict)]
 
 
-def fetch_followers(webcmd: str, screen_name: str) -> int:
+def fetch_followers(webcmd: str, screen_name: str, window: str = DEFAULT_WEBCMD_WINDOW) -> int:
     if not screen_name:
         return 0
     try:
-        payload = run_webcmd_json(webcmd, ["twitter", "profile", screen_name], timeout=120)
+        payload = run_webcmd_json(
+            webcmd, ["twitter", "profile", screen_name], timeout=120, window=window
+        )
     except RuntimeError:
         return 0
     if isinstance(payload, list):
@@ -545,9 +558,12 @@ def run_once(args: argparse.Namespace) -> int:
     exponent = parse_float(config.get("VIRAL_RADAR_VIEW_EXPONENT"), DEFAULT_EXPONENT)
     retention_days = int(parse_float(config.get("VIRAL_RADAR_RETENTION_DAYS"), RETENTION_DAYS))
     webcmd = args.webcmd or config.get("VIRAL_RADAR_WEBCMD", "webcmd")
+    window = config.get("VIRAL_RADAR_WEBCMD_WINDOW", DEFAULT_WEBCMD_WINDOW).strip().lower()
+    if window not in ("foreground", "background"):
+        raise RuntimeError("VIRAL_RADAR_WEBCMD_WINDOW must be foreground or background")
 
     cutoff = now - timedelta(hours=cutoff_hours)
-    rows = fetch_tweets(webcmd, limit)
+    rows = fetch_tweets(webcmd, limit, window)
     seen: set[str] = set()
     results: list[dict[str, object]] = []
     for row in rows:
@@ -558,7 +574,7 @@ def run_once(args: argparse.Namespace) -> int:
         timestamp = parse_ts(row)
         if not timestamp or timestamp < cutoff:
             continue
-        result = build_result(row, now, lambda name: fetch_followers(webcmd, name), exponent)
+        result = build_result(row, now, lambda name: fetch_followers(webcmd, name, window), exponent)
         if result:
             results.append(result)
 
