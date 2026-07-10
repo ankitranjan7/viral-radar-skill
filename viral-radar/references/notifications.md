@@ -56,6 +56,9 @@ The generic payload is JSON:
 - Store webhook URLs only in `~/.viral-radar/config.env`.
 - Keep `config.env` mode `0600`.
 - Do not paste webhook URLs into chats, issues, evidence files, or logs.
+  Collect the value as described in SKILL.md ("Securely collect the webhook
+  on macOS") — a native hidden-input dialog on macOS, or the user's own
+  editor elsewhere.
 - If a webhook leaks, delete or rotate it before testing again.
 - Treat HTTP `2xx` as success.
 - Retry HTTP `429` and `5xx` once.

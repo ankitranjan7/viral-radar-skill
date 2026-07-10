@@ -112,6 +112,33 @@ The webhook URL is a credential: anyone holding it can post to the user's
 channel. Never print it, log it, or let it end up in evidence files, shell
 history you echo back, or chat output. If it leaks, tell the user to rotate it.
 
+#### Securely collect the webhook on macOS
+
+Do not ask the user to paste the webhook into chat, and do not read its value
+back after collecting it. On macOS, open a native hidden-input dialog and
+redirect the value directly to a protected temporary file:
+
+```bash
+umask 077
+osascript -e 'text returned of (display dialog "Paste your webhook URL:" default answer "" with hidden answer buttons {"Cancel", "Save"} default button "Save" cancel button "Cancel")' > ~/.viral-radar/.webhook.tmp
+```
+
+If the user cancels, `osascript` exits non-zero — stop and ask how they want
+to proceed. Otherwise sanity-check the file without printing its contents
+(e.g. `grep -qE '^https://' ~/.viral-radar/.webhook.tmp`), then splice it into
+`config.env` and delete the temp file in commands that never echo the value:
+
+```bash
+printf 'VIRAL_RADAR_DISCORD_WEBHOOK=%s\n' "$(cat ~/.viral-radar/.webhook.tmp)" >> ~/.viral-radar/config.env
+rm ~/.viral-radar/.webhook.tmp
+chmod 600 ~/.viral-radar/config.env
+```
+
+(Substitute the key matching `VIRAL_RADAR_DESTINATION`.) On other platforms,
+or if the dialog cannot be shown, have the user open `config.env` in their own
+editor and paste the URL there themselves — never route it through the
+conversation.
+
 ### 6. Test exactly as cron will run
 
 Cron runs with a minimal environment — no shell profile, near-empty `PATH`,
