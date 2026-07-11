@@ -61,9 +61,16 @@ until rows older than `VIRAL_RADAR_RETENTION_DAYS` are pruned.
 
 ### 1. Confirm the plan
 
-Tell the user what setup creates (the file table above), that it requires a
-Webcmd browser session logged into X, and how often it will run. Get their
-go-ahead before touching their machine.
+The confirmation message must state:
+
+- what setup creates (the file table above)
+- that it requires a Webcmd browser session logged into X
+- how often it will run
+- this exact sentence: "This setup adds a scheduled job, so on macOS you may
+  need to grant permission for your terminal or agent to administer your
+  computer."
+
+Get their go-ahead before touching their machine.
 
 ### 2. Check prerequisites
 
