@@ -151,6 +151,16 @@ must use:
 - `VIRAL_RADAR_WEBCMD_WINDOW=background`
 - explicit `--config`, `--state`, and `--output-dir`
 - stdout appended to `logs/viral-radar.log`, stderr to `logs/viral-radar.err`
+- a stripped `PATH` matching cron's, not your interactive shell's — Webcmd's
+  binary starts with `#!/usr/bin/env node`, so it needs `node` resolvable on
+  `PATH` even though you already gave it an absolute path in
+  `VIRAL_RADAR_WEBCMD`. Find `node`'s directory with `which node` and confirm
+  it's on the `PATH` you're about to put in the crontab (step 7) — an absolute
+  `VIRAL_RADAR_WEBCMD` alone is not enough. Run at least the `--test-alert`
+  pass wrapped in `env -i PATH=<the exact PATH you plan to put in cron>
+  HOME="$HOME" ...` so a missing `node` surfaces now instead of showing up
+  as `env: node: No such file or directory` in `viral-radar.err` after the
+  first real cron fire.
 
 First run with `--test-alert` added: it sends a harmless "Viral Radar test
 alert" to the webhook. Continue only if it exits `0`, `state.sqlite3` exists,
@@ -161,10 +171,13 @@ and an evidence JSON appeared in `output/`. Then run once without
 
 Install or replace this managed block, preserving all unrelated crontab
 entries (the markers exist so update and removal can never clobber the user's
-other jobs):
+other jobs). Set `PATH` explicitly to whatever you verified in step 6 —
+cron's default `PATH` is minimal and won't include the directory holding
+`node`, which Webcmd needs to even start:
 
 ```cron
 # viral-radar begin
+PATH=<dir containing node>:/usr/bin:/bin:/usr/sbin:/sbin
 <schedule> cd ~/.viral-radar && <python> ~/.viral-radar/viral-timeline.py --config ~/.viral-radar/config.env --state ~/.viral-radar/state.sqlite3 --output-dir ~/.viral-radar/output >> ~/.viral-radar/logs/viral-radar.log 2>> ~/.viral-radar/logs/viral-radar.err
 # viral-radar end
 ```

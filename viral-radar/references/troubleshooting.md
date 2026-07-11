@@ -37,6 +37,13 @@ cd ~/.viral-radar && /absolute/path/to/python3 ~/.viral-radar/viral-timeline.py 
   or `webcmd was not found`, the cron line or `VIRAL_RADAR_WEBCMD` is using a
   relative name — replace with absolute paths from `which python3` /
   `which webcmd`.
+- If the log shows `env: node: No such file or directory`, an absolute
+  `VIRAL_RADAR_WEBCMD` path was not enough — Webcmd's binary starts with
+  `#!/usr/bin/env node`, so `node` itself must still resolve on cron's `PATH`.
+  Add a `PATH=<dir from which node>:/usr/bin:/bin:/usr/sbin:/sbin` line to the
+  managed crontab block (see Install step 7 in SKILL.md), then rerun the
+  `--test-alert` check wrapped in `env -i PATH=<same value> HOME="$HOME" ...`
+  to confirm before waiting for the next real cron fire.
 - On macOS, if the error log shows `Operation not permitted`, cron lacks Full
   Disk Access: System Settings → Privacy & Security → Full Disk Access → add
   `/usr/sbin/cron`.
