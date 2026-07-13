@@ -32,7 +32,17 @@ cd ~/.viral-radar && /absolute/path/to/python3 ~/.viral-radar/viral-timeline.py 
   (Install step 7 in SKILL.md).
 - Cron only fires while the machine is awake. Laptops that sleep between
   scheduled times simply skip those runs — this is the most common cause of
-  "gaps" and needs no fix beyond expectation-setting (or a shorter interval).
+  "gaps." Confirm it with `pmset -g log | grep -E "	(Sleep|Wake|DarkWake) "`
+  around the missed time: macOS drops into Deep Idle and only surfaces for
+  brief (5-40s) `DarkWake` maintenance bursts, which are usually too short for
+  the full webcmd → browser → X scrape → webhook round trip, so a run can be
+  skipped even if a `DarkWake` happens to land near the scheduled minute. The
+  actionable fix is `sudo pmset repeat wake MTWRFSU <HH:MM:SS>` (run once per
+  desired wake time, local time, up to a few times if the schedule needs
+  several) to force a real wake shortly before each scheduled run — check
+  existing repeating wakes first with `pmset -g sched` so you don't clobber
+  ones the user already set. Otherwise this needs no fix beyond
+  expectation-setting (or a shorter scan interval).
 - Cron runs with a minimal environment. If the log shows `command not found`
   or `webcmd was not found`, the cron line or `VIRAL_RADAR_WEBCMD` is using a
   relative name — replace with absolute paths from `which python3` /
